@@ -7,6 +7,9 @@ import torch
 
 from datasets import load_dataset
 from transformers import AutoTokenizer
+from transformers import AutoModelForSequenceClassification
+
+# from train import train, test
 
 
 id2label = {0: "ham", 1: "spam"}
@@ -20,10 +23,40 @@ def string_to_index_label(string_label):
     return 0 if string_label=='ham' else 1
 
 
+def tokenized_data(tokenizer, inputs, max_length=64):
+    return tokenizer.batch_encode_plus(
+        # 다양한 방법이 있지만, 여기서는 List[str]
+        inputs,
+        # If set, will return tensors instead of list of python integers.
+        # Return PyTorch torch.Tensor objects.
+        return_tensors="pt",
+        # True or 'longest': 
+        #       Pad to the longest sequence in the batch 
+        #       (or no padding if only a single sequence if provided).
+        # 'max_length': 
+        #       Pad to a maximum length specified with the argument max_length
+        #       or to the maximum acceptable input length for the model 
+        #       if that argument is not provided.
+        # False or 'do_not_pad' (default):
+        #       No padding (i.e., can output a batch with sequences of different lengths).
+        padding="max_length",
+        # Controls the maximum length to use by one of the truncation/padding parameters.
+        max_length=max_length,
+        # True or 'longest_first' : Truncate to a maximum length specified with the argument max_length
+        #                           or to the maximum acceptable input length for the model if that argument is not provided. 
+        #                           This will truncate token by token, removing a token from the longest sequence in the pair 
+        #                           if a pair of sequences (or a batch of pairs) is provided.
+        # 'only_first' :
+        # 'only_second' :
+        # False or 'do_not_truncate' (default) : 
+        truncation=True)
+
+
 
 def ready_source_dataset():
     """
-        source dataset ( huggingface dataset : SetFit/enron_spam )
+        Source Dataset ( huggingface dataset : SetFit/enron_spam )
+        A dataset for pre-training
     """
 
     print("[ Load source dataset ( enron spam dataset ) ]\n")
@@ -41,24 +74,24 @@ def ready_source_dataset():
 
 
     print(f"Num of train source dataset : {len(train_source_dataset)}\n")
-    print(train_source_dataset['length'].describe(), '\n\n')
+    print(train_source_dataset['length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     print(f"Num of ham (train source dataset) : {len(train_source_dataset.loc[train_source_dataset['label']==0])}\n")
-    print(train_source_dataset.loc[train_source_dataset['label']==0, 'length'].describe(), '\n\n')
+    print(train_source_dataset.loc[train_source_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     print(f"Num of spam (train source dataset) : {len(train_source_dataset.loc[train_source_dataset['label']==1])}\n")
-    print(train_source_dataset.loc[train_source_dataset['label']==1, 'length'].describe(), '\n\n')
+    print(train_source_dataset.loc[train_source_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     print("\n")
 
     print(f"Num of test source dataset : {len(test_source_dataset)}\n")
-    print(test_source_dataset['length'].describe(), '\n\n')
+    print(test_source_dataset['length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     print(f"Num of ham (test source dataset) : {len(test_source_dataset.loc[test_source_dataset['label']==0])}\n")
-    print(test_source_dataset.loc[test_source_dataset['label']==0, 'length'].describe(), '\n\n')
+    print(test_source_dataset.loc[test_source_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     print(f"Num of spam (test source dataset) : {len(test_source_dataset.loc[test_source_dataset['label']==1])}\n")
-    print(test_source_dataset.loc[test_source_dataset['label']==1, 'length'].describe(), '\n\n')
+    print(test_source_dataset.loc[test_source_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
     return train_source_dataset.loc[:, ['text', 'label']], test_source_dataset.loc[:, ['text', 'label']]
 
@@ -152,17 +185,17 @@ def dataset_analysis():
 
     print("[ spam and ham dataset ]")
     print(f"Num of datset : {len(df)}\n")
-    print(df['length'].describe(), '\n\n')
+    print(df['length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
 
     print("[ ham dataset ]")
     print(f"Num of ham datset : {len(df.loc[df['label']==0])}\n")
-    print(df.loc[df['label']==0, 'length'].describe(), '\n\n')
+    print(df.loc[df['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
 
     print("[ spam dataset ]")
     print(f"Num of spam datset : {len(df.loc[df['label']==1])}\n")
-    print(df.loc[df['label']==1, 'length'].describe(), '\n\n')
+    print(df.loc[df['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .99]), '\n\n')
 
 
 
@@ -173,6 +206,10 @@ def dataset_analysis():
     # =========================================================================
     # 문자열 전체 보기 (show full long string in pandas DataFrame)
     # pd.options.display.max_colwidth = 2000
+
+
+
+
 
 
 
@@ -200,24 +237,77 @@ def main(args):
 
         # 시작하기 전에 항상 데이터셋을 shuffle
         np.random.seed(100)
-        train_source_dataset = np.random.permutation(train_source_dataset)
-        test_source_dataset = np.random.permutation(test_source_dataset)
 
-        train_inputs = list(train_source_dataset['text'].values)
-        train_labels = list(train_source_dataset['label'].values)
-        validation_inputs = list(test_source_dataset['text'].values)
-        validation_labels = list(test_source_dataset['label'].values)
+        train_source_dataset = np.random.permutation(train_source_dataset)
+        validation_source_dataset = np.random.permutation(validation_source_dataset)
+
+
+        train_inputs = list(train_source_dataset[:, 0])
+        train_labels = list(train_source_dataset[:, 1])
+        validation_inputs = list(validation_source_dataset[:, 0])
+        validation_labels = list(validation_source_dataset[:, 1])
 
         print("{} examples in train".format(len(train_inputs)))
         print("{} examples in validation".format(len(validation_inputs)))
 
 
 
+        output_dir = "save/{}".format(args.model) + "/lr({})bs_train({})".format(args.learning_rate, args.batch_size_train)
 
-    from IPython import embed; embed()
+        # Before :  type(inputs) - list
+        #           len(inputs) - len(dataset)
+        train_inputs = tokenized_data(tokenizer, train_inputs) # tokenized about train data
+        validation_inputs = tokenized_data(tokenizer, validation_inputs) # tokenized about validation data
+        # After : type(inputs) - transformers.tokenization_utils_base.BatchEncoding
+        # len(inputs) = 2
+        # inputs = {'input_ids' : torch.Tensor, 'attention_mask' : torch.Tensor}
 
-    # Load Dataset
-    dataset_analysis()
+        # type(inputs['input_ids']) = torch.Tensor
+        # inputs['input_ids'].shape = torch.Size([ len(dataset), padding_max_length ])
+        #       'input_ids' : token들의 id 리스트 (sequence of token id)
+
+        # type(inputs['attention_mask']) = torch.Tensor
+        # inputs['attention_mask'].shape = torch.Size([ len(dataset), padding_max_length ])
+        #       'attention_mask' : 
+        #           attention 연산이 수행되어야 할 token과 무시해야 할 token을 구별하는 정보가 담긴 리스트.
+        #           bert-base-uncased tokenizer는 attention 연산이 수행되어야 할, 일반적인 token에는 1을 부여하고,
+        #           padding과 같이 attention 연산이 수행할 필요가 없는 token들에는 0을 부여한다.
+
+
+        # Load pretrained model
+        print("\n[ Load pretrained model ]")
+        model = AutoModelForSequenceClassification.from_pretrained(
+            args.model, num_labels=2, id2label=id2label, label2id=label2id
+        )
+
+        # Determine if it exists
+        if not os.path.exists(output_dir):
+            os.mkdir(output_dir)
+        else:
+            print ("%s already exists!" % output_dir)
+
+
+        print("\n[ Start Train ]")
+        train(args, model, train_inputs, train_labels, validation_inputs, validation_labels, 
+            batch_size_train=args.batch_size_train, 
+            batch_size_validation=args.batch_size_test,
+            output_dir=output_dir,
+            save_boundary_accuracy=args.save_boundary_accuracy,
+            learning_rate=args.learning_rate,
+            warmup_steps=50,
+            num_training_steps=args.num_training_steps,
+            num_epochs=args.epochs,
+            gradient_accumulation_steps=1,
+            max_grad_norm=1.0,
+            eval_period=100,
+            device=device)
+
+
+
+
+    if args.train:
+        # Load Dataset
+        dataset_analysis()
 
 
 
@@ -241,6 +331,16 @@ if __name__ == '__main__':
     parser.add_argument('--train', action="store_true", help='Train (Fine-tuning) input model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
     parser.add_argument('--validation', action="store_true", help='Validation input model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
     parser.add_argument('--test', action="store_true", help='Test input model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
+
+    parser.add_argument('--batch_size_train', '-bstr', type=int, default=16, help='Size of batch (train)')
+    parser.add_argument('--batch_size_test', '-bste', type=int, default=4, help='Size of batch (test)')
+    parser.add_argument('--learning_rate', '-lr', type=float, default=1e-5, help='Learning Rate to train')
+
+    parser.add_argument('--steps', '-n', type=int, default=2000, help='how many steps when we training')
+    parser.add_argument('--epochs', '-e', type=int, default=10, help='Number of epoch to train.')#ignore
+    parser.add_argument('--save_steps', '-ss', type=str, default=None, help='Writing steps accuracy when validation or testing')
+    parser.add_argument('--save_boundary_accuracy', '-sba', type=float, default=93.0, help='save boundary accuracy in excel file when we training')
+
     
     
 

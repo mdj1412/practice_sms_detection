@@ -53,7 +53,7 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
 
             loss = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels).loss
 
-            if torch.innan(loss).data:
+            if torch.isnan(loss).data:
                 print("Stop training because loss=%s" % (loss.data))
                 stop_training = True
                 break
@@ -100,6 +100,8 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
             if global_step == num_training_steps:
                 break
         if global_step == num_training_steps:
+            break
+        if stop_training:
             break
     print("Finish training")
 
@@ -185,7 +187,6 @@ def get_optimizer_and_scheduler(model, learning_rate=1e-5, warmup_proportion=0.0
     ]
 
     optimizer = AdamW(optimizer_grouped_parameters, lr=learning_rate, eps=adam_epsilon)
-
     scheduler = get_linear_schedule_with_warmup(optimizer, num_warmup_steps=warmup_steps, num_training_steps=num_training_steps)
 
     return optimizer, scheduler

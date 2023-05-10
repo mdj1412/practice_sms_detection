@@ -233,11 +233,13 @@ def main(args):
 
         output_dir = f"save/{ args.model }/lr({ args.learning_rate })bs_train({ args.batch_size_train })"
 
-        # max length 를 train, validation data 길이의 95% 비율로 지정해줌
+        # max length 를 train, validation data 길이의 95% 비율로 지정해줌 
+        # (결국 이렇게 못함 : 512가 최대 )
+        # https://github.com/huggingface/transformers/issues/1215
         train_inputs = tokenized_data(tokenizer, inputs=train_inputs, 
-                                    max_length=4500) # tokenized about train data
+                                    max_length=512) # tokenized about train data
         validation_inputs = tokenized_data(tokenizer, inputs=validation_inputs, 
-                                        max_length=4500) # tokenized about validation data
+                                        max_length=512) # tokenized about validation data
 
         print("\n[ Load pretrained model ]")
         model = AutoModelForSequenceClassification.from_pretrained(

@@ -1,16 +1,19 @@
 import os
 import time
+import datetime
 from tqdm import tqdm
 
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 import torch
 from torch.utils.data import TensorDataset, DataLoader, RandomSampler, SequentialSampler
 from transformers import AdamW, get_linear_schedule_with_warmup
+from sklearn.metrics import f1_score
 
 
 
-def train(args, model, train_inputs, train_labels, validation_inputs, validation_labels,
+def train(model, train_inputs, train_labels, validation_inputs, validation_labels,
             batch_size_train, batch_size_validation,
             output_dir,
             save_boundary_accuracy,
@@ -22,9 +25,24 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
             max_grad_norm=1.0,
             eval_period=50,
             device='mps'):
+    
+    model_name = '/'.join(output_dir.split('/')[1:-1])
+    save_dir = output_dir.split('/')[0] + "_accuracy.csv"
+
+    print(f"\n[ 저장되는 directory : {save_dir} ]")
+
+
+    if not os.path.exists(save_dir):
+        df = pd.DataFrame(
+                columns=['model_name', 'learning_rate', 'batch_size_train', 'step', 
+                        'train_loss', 'train_accuracy', 'f1_score_train', 'test_loss', 'test_accuracy', 'f1_score_test', 'time']
+            )
+    else :
+        df = pd.read_csv(save_dir, index_col='Unnamed: 0')
 
     # batch size = 16, step = 200 : 3200 training examples
     # 1 epoch = 4210 steps (4210 * 16 training examples)
+
 
     optimizer, scheduler = get_optimizer_and_scheduler(model, learning_rate=learning_rate, warmup_steps=warmup_steps, num_training_steps=num_training_steps)
 
@@ -43,6 +61,7 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
     stop_training = False
 
     print("Start training")
+    start = time.time()
     for epoch in range(num_epochs):
         for batch in tqdm(train_dataloader):
             global_step += 1
@@ -50,8 +69,20 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
             input_ids = batch[0].to(device)
             attention_mask = batch[1].to(device)
             labels = batch[2].to(device)
+            
+            # loss : when labels is provided, Classification loss.
+            # logits : Classification scores before SoftMax.
+            output_model = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels)
+            loss = output_model.loss
 
-            loss = model(input_ids=input_ids, attention_mask=attention_mask, labels=labels).loss
+
+            # Check Train Accuracy
+            logits = output_model.logits # shape = (16, 2) = (batch_size_train, 2)
+            predictions = torch.argmax(logits, axis=1).cpu() # shape = (batch_size_train)
+            labels = torch.LongTensor(labels.cpu()) # shape = (batch_size_train)
+            train_accuracy = np.mean(np.array(predictions) == np.array(labels))
+            f1_score_train = f1_score(labels, predictions, average='binary')
+
 
             if torch.isnan(loss).data:
                 print("Stop training because loss=%s" % (loss.data))
@@ -59,7 +90,6 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
                 break
 
             train_losses.append(loss.detach().cpu())
-
             loss.backward()
 
 
@@ -72,17 +102,42 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
                     scheduler.step()
             
             if global_step % eval_period == 0:
-                acc = test(args=args, model=model, inputs=validation_inputs, labels=validation_labels,
-                            batch_size=batch_size_validation, step=global_step, device=device, version="train")
+                # from IPython import embed; embed()
+                acc, test_loss, f1_score_test = test(model=model, inputs=validation_inputs, labels=validation_labels,
+                            batch_size=batch_size_validation, device=device)
+                test_loss = np.array(test_loss).item()
                 
-                print("\n[ Validation ] step: %d\tAccuracy: %.1f%%" % (global_step, acc))
+                end = time.time()
+                sec = end - start
+                time_result = str(datetime.timedelta(seconds=sec)).split('.')[0]
+
+                print("\n[ Validation ] step: %d\tLoss: %.4f\tAccuracy: %.4f%%\tF1-Score: %.4f" % (global_step, test_loss, acc, f1_score_test))
+
+
+
+                filt = (df['model_name'] == model_name) & \
+                        (df['learning_rate'] == learning_rate) & \
+                        (df['batch_size_train'] == batch_size_train) & \
+                        (df['step'] == global_step)
+                if df[filt].empty:
+                    df.loc[len(df)] = [model_name, learning_rate, batch_size_train, global_step, 
+                                        round(loss.item(), 4), round(train_accuracy, 4), round(f1_score_train, 4),
+                                        round(test_loss, 4), round(acc.item(), 4), round(f1_score_test, 4), 
+                                        time_result]
+                else :
+                    df.loc[filt, ['train_loss', 'train_accuracy', 'f1_score_train', 
+                                'test_loss', 'test_accuracy', 'f1_score_test', 
+                                'time']] = [round(loss.item(), 4), round(train_accuracy, 4), round(f1_score_train, 4), 
+                                            round(test_loss, 4), round(acc.item(), 4), round(f1_score_test, 4), time_result]
+                df.to_csv(save_dir)
+
 
                 if acc > save_boundary_accuracy:
                     model_state_dict = {k: v.cpu() for (k,v) in model.state_dict().items()}
 
                     torch.save(model_state_dict, os.path.join(output_dir, "model-{}.pt".format(global_step)))
-                    print("Saving model at global_step: %d\t(train loss: %.2f)\t(learning_rate: %f)\t(time: {?})" 
-                            % (global_step, np.mean(train_losses), learning_rate))
+                    print("Saving model at global_step: %d\t(learning_rate: %f)\t(train loss: %.3f)\t(train accuracy: %.2f)\t(f1-score train: %.2f)\t(test loss: %.3f\t(test accuracy: %.2f)\t(f1-score test: %.2f)\t(time: {%s})" 
+                            % (global_step, learning_rate, np.mean(train_losses), train_accuracy, f1_score_train, test_loss, acc, f1_score_test, time_result))
 
                     train_losses = []
 
@@ -99,23 +154,13 @@ def train(args, model, train_inputs, train_labels, validation_inputs, validation
 
             if global_step == num_training_steps:
                 break
-        if global_step == num_training_steps:
-            break
-        if stop_training:
+        if global_step == num_training_steps or stop_training:
             break
     print("Finish training")
 
 
 
-def test(args, model, inputs, labels, batch_size, step, device="mps", version="test"):
-    if version == "train":
-        save_dir = "save_accuracy.csv"
-        if not os.path.exists(save_dir):
-            df = pd.DataFrame(
-                    columns=['model_name', 'learning_rate', 'batch_size_train', 'step', 'accuracy']
-                )
-        else :
-            df = pd.read_csv(save_dir, index_col='Unnamed: 0')
+def test(model, inputs, labels, batch_size, device="mps"):
 
     model.to(device)
     model.eval()
@@ -127,33 +172,37 @@ def test(args, model, inputs, labels, batch_size, step, device="mps", version="t
         input_ids = batch[0].to(device)
         attention_mask = batch[1].to(device)
 
+        # loss : when labels is provided, Classification loss.
+        # logits : Classification scores before SoftMax.
         with torch.no_grad():
             logits = model(input_ids=input_ids, attention_mask=attention_mask).logits
         
         logits = logits.detach().cpu()
         all_logits.append(logits)
 
-    all_logits = torch.cat(all_logits, axis=0)
-    predictions = torch.argmax(all_logits, axis=1)
-    labels = torch.LongTensor(labels)
+
+    # all_logits : shape = (500, 4, 2) 
+    # = (data_size / batch_size, batch_size, 2)
+
+    all_logits = torch.cat(all_logits, axis=0) # shape = (2000, 2)
+    predictions = torch.argmax(all_logits, axis=1) # shape = (2000)
+    labels = torch.LongTensor(labels) # shape = (2000)
 
     acc = torch.sum(predictions==labels) / labels.shape[0]
     acc = acc * 100
 
+    # F1-Score
+    f1_score_test = f1_score(labels, predictions, average='binary')
 
-    if version == "train":
-        filt = (df['model_name'] == args.model) & \
-                (df['learning_rate'] == args.learning_rate) & \
-                (df['batch_size_train'] == args.batch_size_train) & \
-                (df['step'] == step)
-        if df[filt].empty:
-            df.loc[len(df)] = [args.model, args.learning_rate, args.batch_size_train, step, acc.item()]
-        else :
-            df.loc[filt, 'accuracy'] = acc.item()
-        
-        df.to_csv(save_dir)
-    
-    return acc
+
+    # [ loss 구하는 방법 ]
+    num_categories = len(np.unique(labels))
+    num_labels = len(labels)
+    labels_one_hot = np.zeros((num_labels, num_categories)) # shape = (2000, 2)
+    labels_one_hot[np.arange(num_labels), labels] = 1
+    loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(labels=labels_one_hot, logits=all_logits))
+
+    return acc, loss, f1_score_test
     # np.mean(np.array(predictions) == np.array(labels))
 
 

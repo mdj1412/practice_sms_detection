@@ -16,11 +16,11 @@ from sklearn.metrics import f1_score
 def train(model, train_inputs, train_labels, validation_inputs, validation_labels,
             batch_size_train, batch_size_validation,
             output_dir,
-            save_boundary_accuracy,
+            save_boundary_accuracy, save_boundary_f1_score,
             learning_rate=1e-5,
             warmup_steps=50,
             num_training_steps=2000,
-            num_epochs=20,
+            num_epochs=40,
             gradient_accumulation_steps=1,
             max_grad_norm=1.0,
             eval_period=50,
@@ -86,7 +86,8 @@ def train(model, train_inputs, train_labels, validation_inputs, validation_label
 
             if torch.isnan(loss).data:
                 print("Stop training because loss=%s" % (loss.data))
-                stop_training = True
+                # stop_training = True
+                print("??????")
                 break
 
             train_losses.append(loss.detach().cpu())
@@ -132,7 +133,7 @@ def train(model, train_inputs, train_labels, validation_inputs, validation_label
                 df.to_csv(save_dir)
 
 
-                if acc > save_boundary_accuracy:
+                if acc > save_boundary_accuracy and f1_score_test > save_boundary_f1_score:
                     model_state_dict = {k: v.cpu() for (k,v) in model.state_dict().items()}
 
                     torch.save(model_state_dict, os.path.join(output_dir, "model-{}.pt".format(global_step)))
@@ -140,6 +141,7 @@ def train(model, train_inputs, train_labels, validation_inputs, validation_label
                             % (global_step, learning_rate, np.mean(train_losses), train_accuracy, f1_score_train, test_loss, acc, f1_score_test, time_result))
 
                     train_losses = []
+                    print("asdfasdf0123456")
 
                     if best_accuracy == -1:
                         best_accuracy = acc
@@ -149,13 +151,18 @@ def train(model, train_inputs, train_labels, validation_inputs, validation_label
                     else :
                         early_stopping += 1
                     
-                    if early_stopping == 10:
-                        break
+                    # if early_stopping == 10:
+                    #     stop_training = True
+                    #     break
+                    print("asdfasdf")
 
             if global_step == num_training_steps:
+                print("A")
                 break
-        if global_step == num_training_steps or stop_training:
+        if global_step == num_training_steps:
+            print("ABC")
             break
+    print("ABCDEF")
     print("Finish training")
 
 

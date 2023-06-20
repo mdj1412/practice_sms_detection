@@ -3,6 +3,7 @@ import argparse
 
 import numpy as np
 import pandas as pd
+import seaborn as sns
 import torch
 import matplotlib.pyplot as plt
 from sklearn.model_selection import train_test_split
@@ -60,43 +61,62 @@ def load_source_dataset():
     enron_spam_dataset = load_dataset('SetFit/enron_spam')
     print(enron_spam_dataset, '\n\n')
 
-    train_source_dataset = pd.DataFrame({'text' : enron_spam_dataset['train']['text'], 
-                                        'label' : enron_spam_dataset['train']['label']})
-    test_source_dataset = pd.DataFrame({'text' : enron_spam_dataset['test']['text'], 
-                                        'label' : enron_spam_dataset['test']['label']})
+    train_dataset = pd.DataFrame({'text' : enron_spam_dataset['train']['text'], 
+                                'label' : enron_spam_dataset['train']['label']})
+    test_dataset = pd.DataFrame({'text' : enron_spam_dataset['test']['text'], 
+                                'label' : enron_spam_dataset['test']['label']})
 
     # length of text
-    train_source_dataset['length'] = train_source_dataset['text'].apply(len)
-    test_source_dataset['length'] = test_source_dataset['text'].apply(len)
+    train_dataset['length'] = train_dataset['text'].apply(len)
+    test_dataset['length'] = test_dataset['text'].apply(len)
+
+    # drop the length 0
+    drop_train_index = train_dataset[train_dataset['length']==0].index
+    train_dataset.drop(index=drop_train_index, axis=0, inplace=True)
+    drop_test_index = test_dataset[test_dataset['length']==0].index
+    test_dataset.drop(index=drop_test_index, axis=0, inplace=True)
+
 
     print("=================================================\n\n")
-    print(f"Num of train source dataset : {len(train_source_dataset)}\n")
-    print(train_source_dataset['length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+    print(f"Num of train source dataset : {len(train_dataset)}\n")
+    print(train_dataset['length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
 
-    print(f"Num of ham (train source dataset) : {len(train_source_dataset.loc[train_source_dataset['label']==0])}\n")
-    print(train_source_dataset.loc[train_source_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+    print(f"Num of ham (train source dataset) : {len(train_dataset.loc[train_dataset['label']==0])}\n")
+    print(train_dataset.loc[train_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
 
-    print(f"Num of spam (train source dataset) : {len(train_source_dataset.loc[train_source_dataset['label']==1])}\n")
-    print(train_source_dataset.loc[train_source_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+    print(f"Num of spam (train source dataset) : {len(train_dataset.loc[train_dataset['label']==1])}\n")
+    print(train_dataset.loc[train_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+
+    print("=================================================\n\n")
+
+    print(f"Num of test source dataset : {len(test_dataset)}\n")
+    print(test_dataset['length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+
+    print(f"Num of ham (test source dataset) : {len(test_dataset.loc[test_dataset['label']==0])}\n")
+    print(test_dataset.loc[test_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+
+    print(f"Num of spam (test source dataset) : {len(test_dataset.loc[test_dataset['label']==1])}\n")
+    print(test_dataset.loc[test_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
 
     print("=================================================\n\n")
 
-    print(f"Num of test source dataset : {len(test_source_dataset)}\n")
-    print(test_source_dataset['length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+    # 문자열 개수 시각화
+    # merge_dataset = pd.concat([train_dataset, test_dataset], axis=0)
+    # merge_dataset.sort_values(by=['length'], inplace=True)
+    
+    # plt.figure(figsize=(15, 8))
+    # sns.barplot(x=merge_dataset.index, y=merge_dataset['length'])
 
-    print(f"Num of ham (test source dataset) : {len(test_source_dataset.loc[test_source_dataset['label']==0])}\n")
-    print(test_source_dataset.loc[test_source_dataset['label']==0, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
+    # plt.xlabel("index", fontsize=7)
+    # plt.ylabel("length", fontsize=7)
+    # plt.title("")
+    # plt.show()
 
-    print(f"Num of spam (test source dataset) : {len(test_source_dataset.loc[test_source_dataset['label']==1])}\n")
-    print(test_source_dataset.loc[test_source_dataset['label']==1, 'length'].describe(percentiles=[.25, .5, .75, .95, .99]), '\n\n')
-
-    print("=================================================\n\n")
-    return train_source_dataset.loc[:, ['text', 'label']], test_source_dataset.loc[:, ['text', 'label']]
+    return train_dataset.loc[:, ['text', 'label']], test_dataset.loc[:, ['text', 'label']]
 
 
 
-
-def load_target_dataset():
+def load_target_dataset(balanced=True):
     """
         * huggingface dataset : 
         sms_spam, Ngadou/Spam_SMS
@@ -160,7 +180,7 @@ def load_target_dataset():
 
     # ===================================================================================================
     sms_dataset = load_dataset('sms_spam')
-    only_spam_dataset = load_dataset('Ngadou/Spam_SMS')
+    nadou_dataset = load_dataset('Ngadou/Spam_SMS')
 
     # print(sms_dataset)
     # print(only_spam_dataset)
@@ -169,21 +189,21 @@ def load_target_dataset():
 
 
     sms_df = pd.DataFrame({'sms' : sms_dataset['train']['sms'],
-                            'label' : sms_dataset['train']['label']})
+                        'label' : sms_dataset['train']['label']})
     sms_df['length'] = sms_df['sms'].apply(len) # sms 문자열 길이
 
-    ngadou_spam_df = pd.DataFrame({'sms' : only_spam_dataset['train']['email'],
-                                    'label' : only_spam_dataset['train']['label']})
+    ngadou_spam_df = pd.DataFrame({'sms' : nadou_dataset['train']['email'],
+                                'label' : nadou_dataset['train']['label']})
     ngadou_spam_df = ngadou_spam_df.dropna() # null 한 개 있음
     ngadou_spam_df['length'] = ngadou_spam_df['sms'].apply(len) # sms 문자열 길이
+
 
     # 최종 다 합친거 ( kaggle + sms_spam + Ngadou/Spam_SMS )
     df = pd.concat([kaggle_sms_df, sms_df, ngadou_spam_df], ignore_index=True)
     # ham: 0, spam: 1
-    # kaggle_sms_df : 0(4886), 1(754)
-    # sms_df : 0(4827), 1(747)
-    # ngadou_spam_df : 0(2500), 1(499)
-
+    # kaggle_sms_df : 4,886(ham) + 754(spam) = 5,640(total)
+    # sms_df : 4,827(ham) + 747(spam) = 5,574(total)
+    # ngadou_spam_df : 2,999(spam)
 
 
     print("[ spam and ham dataset ]")
@@ -230,20 +250,25 @@ def load_target_dataset():
     print(f"Number of Ham Data: {len(test_df[test_df['label']==0])}, \
             Numer of Spam Data: {len(test_df[test_df['label']==1])}")
     print("\n")
+
+
+    if balanced:
+        # Train Dataset : 9770 ~= 1600 x 6
+        # Spam Data 를 6배 정도 해주면 될 듯
+        # Validation Dataset / Test Dataset 유지
+        expanded_train_spam_df = train_spam_df.loc[np.repeat(train_spam_df.index.values, 6)].reset_index(drop=True)
+        expanded_train_df = pd.concat([train_ham_df, expanded_train_spam_df], ignore_index=True)
+        print("[ 변경된 Train Dataset ]")
+        print(f"Number of Ham Data: {len(expanded_train_df[expanded_train_df['label']==0])}, \
+                Numer of Spam Data: {len(expanded_train_df[expanded_train_df['label']==1])}")
+        print("\n")
+
+        # return train_df.loc[:, ['sms', 'label']], validation_df.loc[:, ['sms', 'label']], test_df.loc[:, ['sms', 'label']]
+        return expanded_train_df.loc[:, ['sms', 'label']], validation_df.loc[:, ['sms', 'label']], test_df.loc[:, ['sms', 'label']]
+
+    else:
+        return train_df.loc[:, ['sms', 'label']], validation_df.loc[:, ['sms', 'label']], test_df.loc[:, ['sms', 'label']]
     
-
-    # Train Dataset : 9770 ~= 1600 x 6
-    # Spam Data 를 6배 정도 해주면 될 듯
-    # Validation Dataset / Test Dataset 유지
-    expanded_train_spam_df = train_spam_df.loc[np.repeat(train_spam_df.index.values, 6)].reset_index(drop=True)
-    expanded_train_df = pd.concat([train_ham_df, expanded_train_spam_df], ignore_index=True)
-    print("[ 변경된 Train Dataset ]")
-    print(f"Number of Ham Data: {len(expanded_train_df[expanded_train_df['label']==0])}, \
-            Numer of Spam Data: {len(expanded_train_df[expanded_train_df['label']==1])}")
-    print("\n")
-
-    return expanded_train_df.loc[:, ['sms', 'label']], validation_df.loc[:, ['sms', 'label']], test_df.loc[:, ['sms', 'label']]
-
     # =========================================================================
     # 문자열 전체 보기 (show full long string in pandas DataFrame)
     # pd.options.display.max_colwidth = 2000
@@ -275,38 +300,48 @@ def load_target_dataset():
 
 
 # Print Top 10 Accuracy
-def show_top_ten(df):
-    idx = df['test_accuracy'].argsort()[-10:][::-1]
+def show_top_ten(df, based_on='test_accuracy'):
+    idx = df[based_on].argsort()[-10:][::-1]
     idx_unnamed = df.index[idx]
-    best_10_accuracy = df.iloc[idx]
+    best_10_df = df.iloc[idx]
 
-    print("[ Best Top 10 Accuracy : {} ]".format(args.model))
-    for i in range(len(best_10_accuracy)):
-        print("{}: {:.2f}% ( lr = {} / bs = {} / step = {} )"
-            .format(i+1, best_10_accuracy['test_accuracy'][idx_unnamed[i]], 
-                best_10_accuracy['learning_rate'][idx_unnamed[i]], 
-                int(best_10_accuracy['batch_size_train'][idx_unnamed[i]]), 
-                int(best_10_accuracy['step'][idx_unnamed[i]])))
+    if based_on=='test_accuracy':
+        print("[ Best Top 10 Accuracy : {} ]".format(args.model))
+    elif based_on=='f1_score_test':
+        print("[ Best Top 10 F1-Score : {} ]".format(args.model))
+    else:
+        raise NotImplementedError("Choose Accuracy or F1-Score")
+    
+    for i in range(len(best_10_df)):
+        print("{}: {:.4f}% ( lr = {} / bs = {} / step = {} )"
+            .format(i+1, best_10_df[based_on][idx_unnamed[i]], 
+                best_10_df['learning_rate'][idx_unnamed[i]], 
+                int(best_10_df['batch_size_train'][idx_unnamed[i]]), 
+                int(best_10_df['step'][idx_unnamed[i]])))
     print()
 
     # best_10_accuracy 에서 등장한 (learning_rate, batch_size_train) 분석
-    check_list = np.unique(best_10_accuracy[['learning_rate', 'batch_size_train']].values, axis=0)
+    check_list = np.unique(best_10_df[['learning_rate', 'batch_size_train']].values, axis=0)
     for lr, bs in check_list:
-        show_specific_lr_bs(df, lr, int(bs))
-        print()
+        show_specific_lr_bs(df, lr, int(bs), based_on)
 
 
 # learning_rate and batch_size_train 기준 Best Top Accuracy
-def show_specific_lr_bs(df, lr, bs):
+def show_specific_lr_bs(df, lr, bs, based_on='test_accuracy'):
     filt = (df['learning_rate'] == lr) & (df['batch_size_train'] == bs)
     df = df[filt]
 
     # Accuracy 정렬 이후, 가장 높은 정확도 10개 추출, 마지막으로 내림차순 정렬
-    idx = df['test_accuracy'].argsort()[-10:][::-1]
-    best_10_accuracy = df.iloc[idx]
+    idx = df[based_on].argsort()[-10:][::-1]
+    best_10_df = df.iloc[idx]
 
-    print("[ Best Top 10 Accuracy : ( lr = {} bs = {} ) ]".format(lr, bs))
-    print(best_10_accuracy)
+    if based_on=='test_accuracy':
+        print("[ Best Top 10 Accuracy : ( lr = {} bs = {} ) ]".format(lr, bs))
+    elif based_on=='f1_score_test':
+        print("[ Best Top 10 F1-Score : ( lr = {} bs = {} ) ]".format(lr, bs))
+    else:
+        raise NotImplementedError("Choose Accuracy or F1-Score")
+    print(best_10_df, '\n')
 
 
 
@@ -338,11 +373,20 @@ def main(args):
     print(device)
 
 
-
-    # python model/main.py --graph --model=roberta-base --source_train
-
     if args.graph:
-        save_dir = "save_source_accuracy.csv"
+        save_dir = "save_{}_accuracy.csv"
+        if args.source_pretrain:
+            save_dir = save_dir.format("source_pretrain")
+        elif args.target_transfer_learning:
+            save_dir = save_dir.format("target_transfer_learning")
+        elif args.target_balanced_train:
+            save_dir = save_dir.format("target_balanced_train")
+        elif args.target_imbalanced_train:
+            save_dir = save_dir.format("target_imbalanced_train")
+        else:
+            raise NotImplementedError("Problem about source_pretrain or target_train or target_transfer_learning")
+
+        print("[ {} ]".format(save_dir))
 
         if not os.path.exists(save_dir):
             raise NotImplementedError("Not exists save_accuracy.csv")
@@ -356,8 +400,13 @@ def main(args):
 
         filt = (df['model_name'] == args.model)
         df = df.loc[filt, ['learning_rate', 'batch_size_train', 'step', 'test_accuracy', 'f1_score_test']]
+
+        if len(df)==0:
+            raise NotImplementedError("No data saved.")
         plt.figure(figsize=(6, 9))
 
+
+        print("\n\n\n ----- Accuracy ----- \n\n\n")
         ##################################################################################################################
 
         minY = df['test_accuracy'].min()
@@ -374,8 +423,7 @@ def main(args):
                 plt.plot(df2['step'], df2['test_accuracy'],
                         label='{} / {}'.format(lr, bs),
                         ls='-', marker='o', markersize=2)
-
-
+        
         # Best Accuracy
         best_accuracy = df.iloc[np.argmax(df['test_accuracy'])]
 
@@ -390,7 +438,7 @@ def main(args):
 
         plt.legend(loc='lower right', fontsize=10)
         plt.axis([0, step_size+100, 0, 100])
-        plt.ylim(max(0, minY-7), min(100, maxY+7)) # y축 범위 설정
+        plt.ylim(max(0, minY-3), min(100, maxY+3)) # y축 범위 설정
         plt.title('Model Name : {0}\n Best Accuracy : {1:.2f}% ( lr = {2} / bs = {3} / step = {4})'
             .format(args.model, best_accuracy['test_accuracy'], best_accuracy['learning_rate'], 
             int(best_accuracy['batch_size_train']), int(best_accuracy['step'])))
@@ -398,9 +446,7 @@ def main(args):
         plt.ylabel('Accuracy')
 
 
-        print("\n\n\n###############################################################################")
-        print("###############################################################################")
-        print("###############################################################################\n\n\n")
+        print("\n\n\n ----- F1-Score ----- \n\n\n")
         #######################################################################################################
 
         minY = df['f1_score_test'].min()
@@ -421,10 +467,16 @@ def main(args):
         # Best F1-Score
         best_f1_score = df.iloc[np.argmax(df['f1_score_test'])]
 
+        # Print Top 10 F1-Score
+        show_top_ten(df, based_on='f1_score_test')
+        # learning_rate and batch_size_train 기준 Best Top F1-Score
+        # show_specific_lr_bs(df, 7e-5, 32)
+
 
         plt.legend(loc='lower right', fontsize=10)
         plt.axis([0, step_size+100, 0, 100])
-        plt.ylim(max(-1, minY-0.05), min(1, maxY+0.05)) # y축 범위 설정
+        # plt.ylim(max(-1, minY-0.05), min(1, maxY+0.05)) # y축 범위 설정
+        plt.ylim(0.9, min(1, maxY+0.05))
         plt.title('Model Name : {0}\n Best F1-Score : {1:.4f} ( lr = {2} / bs = {3} / step = {4})'
             .format(args.model, best_f1_score['f1_score_test'], best_f1_score['learning_rate'], 
             int(best_f1_score['batch_size_train']), int(best_f1_score['step'])))
@@ -433,20 +485,7 @@ def main(args):
         plt.tight_layout()
         plt.show()
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        #######################################################################################################
 
         exit()
 
@@ -458,7 +497,46 @@ def main(args):
     tokenizer = AutoTokenizer.from_pretrained(args.model)
 
 
-    if args.pretrain:
+
+    # python model/main.py --graph --model=distilbert-base-uncased --source_pretrain
+    # python model/main.py --graph --model=distilbert-base-cased --source_pretrain
+    # python model/main.py --graph --model=bert-base-uncased --source_pretrain
+    # python model/main.py --graph --model=bert-base-cased --source_pretrain
+    # python model/main.py --graph --model=roberta-base --source_pretrain
+
+    # python model/main.py --graph --model=distilbert-base-uncased --target_imbalanced_train
+    # python model/main.py --graph --model=distilbert-base-cased --target_imbalanced_train
+    # python model/main.py --graph --model=bert-base-uncased --target_imbalanced_train
+    # python model/main.py --graph --model=bert-base-cased --target_imbalanced_train
+    # python model/main.py --graph --model=roberta-base --target_imbalanced_train
+
+    # python model/main.py --graph --model=distilbert-base-uncased --target_transfer_learning
+    # python model/main.py --graph --model=distilbert-base-cased --target_transfer_learning
+    # python model/main.py --graph --model=bert-base-uncased --target_transfer_learning
+    # python model/main.py --graph --model=bert-base-cased --target_transfer_learning
+    # python model/main.py --graph --model=roberta-base --target_transfer_learning
+
+    # python model/main.py --test --model=distilbert-base-uncased --learning_rate=5e-5 --batch_size_train=64 --target_imbalanced_train --steps=300,400,700
+    # python model/main.py --test --model=distilbert-base-cased --learning_rate=5e-5 --batch_size_train=64 --target_imbalanced_train --steps=600,800,900
+    # python model/main.py --test --model=bert-base-uncased --learning_rate=5e-5 --batch_size_train=32 --target_imbalanced_train --steps=1200,1000,900
+    # python model/main.py --test --model=bert-base-cased --learning_rate=3e-5 --batch_size_train=64 --target_imbalanced_train --steps=700,800,1000
+    # python model/main.py --test --model=roberta-base --learning_rate=5e-5 --batch_size_train=64 --target_imbalanced_train --steps=600,700,1300
+
+    # python model/main.py --test --model=distilbert-base-uncased --learning_rate=5e-5 --batch_size_train=64 --target_balanced_train --steps=700,800,900
+    # python model/main.py --test --model=distilbert-base-cased --learning_rate=5e-5 --batch_size_train=64 --target_balanced_train --steps=700,800,900
+    # python model/main.py --test --model=bert-base-uncased --learning_rate=5e-5 --batch_size_train=32 --target_balanced_train --steps=900,700,1100
+    # python model/main.py --test --model=bert-base-cased --learning_rate=3e-5 --batch_size_train=64 --target_balanced_train --steps=700,800,900
+    # python model/main.py --test --model=roberta-base --learning_rate=5e-5 --batch_size_train=64 --target_balanced_train --steps=500,600,1200
+
+
+    # python model/main.py --target_imbalanced_train --model=distilbert-base-uncased --batch_size_train=64 --batch_size_test=4 --learning_rate=5e-5 --num_training_steps=2000 --save_boundary_f1_score=0.9
+    # python model/main.py --target_imbalanced_train --model=distilbert-base-cased --batch_size_train=64 --batch_size_test=4 --learning_rate=5e-5 --num_training_steps=2000 --save_boundary_f1_score=0.9
+    # python model/main.py --target_imbalanced_train --model=bert-base-uncased --batch_size_train=32 --batch_size_test=4 --learning_rate=5e-5 --num_training_steps=2000 --save_boundary_f1_score=0.9
+    # python model/main.py --target_imbalanced_train --model=bert-base-cased --batch_size_train=64 --batch_size_test=4 --learning_rate=3e-5 --num_training_steps=2000 --save_boundary_f1_score=0.9
+    # python model/main.py --target_imbalanced_train --model=roberta-base --batch_size_train=64 --batch_size_test=4 --learning_rate=5e-5 --num_training_steps=2000 --save_boundary_f1_score=0.9
+
+
+    if args.source_pretrain:
         # Load Source Dataset ( source dataset -> transfer learning )
         train_source_dataset, validation_source_dataset = load_source_dataset()
 
@@ -508,7 +586,7 @@ def main(args):
             batch_size_train=args.batch_size_train, 
             batch_size_validation=args.batch_size_test,
             output_dir=output_dir,
-            save_boundary_accuracy=args.save_boundary_accuracy,
+            save_boundary_accuracy=args.save_boundary_accuracy, save_boundary_f1_score=args.save_boundary_f1_score,
             learning_rate=args.learning_rate,
             warmup_steps=50,
             num_training_steps=args.num_training_steps,
@@ -518,6 +596,8 @@ def main(args):
             eval_period=100,
             device=device)
         
+        exit()
+        
 
     ########################################################################
     ########################################################################
@@ -525,10 +605,13 @@ def main(args):
     # 여기서부터 target dataset train, validation, test
 
     # Load Target Dataset
-    train_datset, validation_dataset, test_dataset = load_target_dataset()
+    if args.target_imbalanced_train:
+        train_datset, validation_dataset, test_dataset = load_target_dataset(balanced=False)
+    else:
+        train_datset, validation_dataset, test_dataset = load_target_dataset()
 
     # 시작하기 전에 항상 데이터셋을 shuffle
-    np.random.seed(100)
+    np.random.seed(2023)
     train_datset = np.random.permutation(train_datset)
     validation_dataset = np.random.permutation(validation_dataset)
     test_dataset = np.random.permutation(test_dataset)
@@ -544,72 +627,17 @@ def main(args):
     print("{} examples in validation".format(len(validation_inputs)))
     print("{} examples in test".format(len(test_inputs)))
 
-    # model 이름 / learning rate / batch size train
+    # train method / model 이름 / learning rate / batch size train
+    # train method: 1. target_transfer_learning 2. target_balanced_train 3. target_imbalanced_train
     output_dir = f"{args.model}/lr({args.learning_rate})bs_train({args.batch_size_train})"
 
+    if args.target_transfer_learning:
+        output_dir = os.path.join("save_target_transfer_learning", output_dir)
+    if args.target_balanced_train:
+        output_dir = os.path.join("save_target_balanced_train", output_dir)
+    if args.target_imbalanced_train:
+        output_dir = os.path.join("save_target_imbalanced_train", output_dir)
 
-
-
-    if args.train or args.transfer_learning:
-        # max length 를 train, validation data 길이의 95% 비율로 지정해줌 
-        # (결국 이렇게 못함 : 512가 최대 )
-        # https://github.com/huggingface/transformers/issues/1215
-        train_inputs = tokenized_data(tokenizer, inputs=train_inputs, 
-                                    max_length=512) # tokenized about train data
-        validation_inputs = tokenized_data(tokenizer, inputs=validation_inputs, 
-                                        max_length=512) # tokenized about validation data
-
-        # Huggingface 에 있는 모델을 학습 시킬 경우
-        if args.train:
-            # Load model
-            print("\n[ Load model ]")
-            model = AutoModelForSequenceClassification.from_pretrained(
-                args.model, num_labels=2, id2label=id2label, label2id=label2id
-            )
-            output_dir = os.path.join("save_target_train", output_dir)
-
-        # Source Dataset 에서 Pre-train 시켰던 모델을 학습시킬 경우
-        elif args.transfer_learning:
-            # Load pre-trained model
-            print("\n[ Load pre-trained model ]")
-            print("[ Model : {} / learning_rate : {} / batch_size_train : {} / steps : {} ]"
-                .format(args.model, args.learning_rate, args.batch_size_train, args.steps))
-            
-            file_name = "model-{}.pt".format(args.steps)
-            state_dict = torch.load(os.path.join("save_source", output_dir, file_name))
-
-            model = AutoModelForSequenceClassification.from_pretrained(
-                args.model, num_labels=2, id2label=id2label, label2id=label2id,
-                state_dict=state_dict
-            )
-            output_dir = os.path.join("save_target_transfer_learning", output_dir)
-        else:
-            raise NotImplementedError("Problem about Train or Transfer Learning")
-
-        # Determine if it exists
-        if not os.path.exists(output_dir):
-            output_dir_list = output_dir.split('/')
-            for i in range(len(output_dir_list)):
-                dir = '/'.join(output_dir_list[:i+1])
-                if not os.path.exists(dir):
-                    os.mkdir(dir)
-        else:
-            print ("%s already exists!" % output_dir)
-
-        print("\n[ Start Train ]")
-        train(model, train_inputs, train_labels, validation_inputs, validation_labels, 
-            batch_size_train=args.batch_size_train, 
-            batch_size_validation=args.batch_size_test,
-            output_dir=output_dir,
-            save_boundary_accuracy=args.save_boundary_accuracy,
-            learning_rate=args.learning_rate,
-            warmup_steps=50,
-            num_training_steps=args.num_training_steps,
-            num_epochs=args.epochs,
-            gradient_accumulation_steps=1,
-            max_grad_norm=1.0,
-            eval_period=100,
-            device=device)
 
 
     if args.validation or args.test:
@@ -628,6 +656,8 @@ def main(args):
         if not os.path.exists(output_dir):
             raise NotImplementedError("Not exists {} directory", output_dir)
         
+
+        inputs = tokenized_data(tokenizer, inputs)
 
         # 입력한게 없으면 해당 디렉토리 모든 .pt 파일 실행
         if args.steps is None:
@@ -650,11 +680,75 @@ def main(args):
                 args.model, num_labels=2, id2label=id2label, label2id=label2id,
                 state_dict=state_dict
             )
-        
-        acc, loss, f1_score = test(model, inputs, labels, batch_size=args.batch_size_test, step=step, device=device)
+            acc, loss, f1_score = test(model, inputs, labels, batch_size=args.batch_size_test, device=device)
 
-        print("File Name: %s\tAccuracy: %.1f%%\tLoss: %.3f\tF1-Score: %.4f" % (file_name, acc, loss, f1_score))
-        print("# of parameters : %d\n" % (np.sum([p.numel() for p in model.parameters()]))) # 11,123,023 == 11M
+            print("File Name: %s\tAccuracy: %.1f%%\tLoss: %.3f\tF1-Score: %.4f" % (file_name, acc, loss, f1_score))
+            print("# of parameters : %d\n" % (np.sum([p.numel() for p in model.parameters()]))) # 11,123,023 == 11M
+        
+        exit()
+
+
+
+    if args.target_imbalanced_train or args.target_balanced_train or args.target_transfer_learning:
+        # max length 를 train, validation data 길이의 95% 비율로 지정해줌 
+        # (결국 이렇게 못함 : 512가 최대 )
+        # https://github.com/huggingface/transformers/issues/1215
+        train_inputs = tokenized_data(tokenizer, inputs=train_inputs, 
+                                    max_length=512) # tokenized about train data
+        validation_inputs = tokenized_data(tokenizer, inputs=validation_inputs, 
+                                        max_length=512) # tokenized about validation data
+
+        # Huggingface 에 있는 모델을 학습 시킬 경우
+        if args.target_imbalanced_train or args.target_balanced_train:
+            # Load model
+            print("\n[ Load model ]")
+            model = AutoModelForSequenceClassification.from_pretrained(
+                args.model, num_labels=2, id2label=id2label, label2id=label2id
+            )
+
+        # Source Dataset 에서 Pre-train 시켰던 모델을 학습시킬 경우
+        elif args.target_transfer_learning:
+            # Load pre-trained model
+            print("\n[ Load pre-trained model ]")
+            print("[ Model : {} / learning_rate : {} / batch_size_train : {} / steps : {} ]"
+                .format(args.model, args.learning_rate, args.batch_size_train, args.steps))
+            
+            file_name = "model-{}.pt".format(args.steps)
+            state_dict = torch.load(os.path.join("save_target_transfer_learning", output_dir, file_name))
+
+            model = AutoModelForSequenceClassification.from_pretrained(
+                args.model, num_labels=2, id2label=id2label, label2id=label2id,
+                state_dict=state_dict
+            )
+        else:
+            raise NotImplementedError("Problem about Train or Transfer Learning")
+
+        # Determine if it exists
+        if not os.path.exists(output_dir):
+            output_dir_list = output_dir.split('/')
+            for i in range(len(output_dir_list)):
+                dir = '/'.join(output_dir_list[:i+1])
+                if not os.path.exists(dir):
+                    os.mkdir(dir)
+        else:
+            print ("%s already exists!" % output_dir)
+
+        print("\n[ Start Train ]")
+        train(model, train_inputs, train_labels, validation_inputs, validation_labels, 
+            batch_size_train=args.batch_size_train, 
+            batch_size_validation=args.batch_size_test,
+            output_dir=output_dir,
+            save_boundary_accuracy=args.save_boundary_accuracy, save_boundary_f1_score=args.save_boundary_f1_score,
+            learning_rate=args.learning_rate,
+            warmup_steps=50,
+            num_training_steps=args.num_training_steps,
+            num_epochs=args.epochs,
+            gradient_accumulation_steps=1,
+            max_grad_norm=1.0,
+            eval_period=100,
+            device=device)
+
+
 
 
 
@@ -679,16 +773,14 @@ if __name__ == '__main__':
             bert-base-uncased, bert-base-cased, roberta-base, etc')
 
     # 넷 중에 하나 선택
-    parser.add_argument('--pretrain', action="store_true", help='Pre-training input model with dataset(SetFit/enron_spam)') # type : boolean
-    parser.add_argument('--train', action="store_true", help='First-time train model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
-    parser.add_argument('--transfer_learning', action="store_true", help='Learn pre-trained models with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
+    parser.add_argument('--source_pretrain', action="store_true", help='Pre-training input model with dataset(SetFit/enron_spam)') # type : boolean
+    parser.add_argument('--target_balanced_train', action="store_true", help='First-time train model with balanced data(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
+    parser.add_argument('--target_imbalanced_train', action="store_true", help='First-time train model with imbalanced data(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
+    parser.add_argument('--target_transfer_learning', action="store_true", help='Learn pre-trained models with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
+    
     parser.add_argument('--validation', action="store_true", help='Validation input model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
     parser.add_argument('--test', action="store_true", help='Test input model with dataset(sms_spam, Ngadou/Spam_SMS, kaggle)') # type : boolean
     parser.add_argument('--graph', action="store_true", help='Draw Graph') # type : boolean
-
-    parser.add_argument('--source_train', action="store_true", help='Result of learning with source dataset') # type : boolean
-    parser.add_argument('--target_train', action="store_true", help='Result of learning from base model to target dataset') # type : boolean
-    parser.add_argument('--target_transfer_learning', action="store_true", help='Result of learning from pre-train model to target dataset') # type : boolean
 
     parser.add_argument('--batch_size_train', '-bstr', type=int, default=16, help='Size of batch (train)')
     parser.add_argument('--batch_size_test', '-bste', type=int, default=4, help='Size of batch (test)')
@@ -696,15 +788,15 @@ if __name__ == '__main__':
 
     parser.add_argument('--steps', '-s', type=str, default=None, help='Writing''steps accuracy when validation or testing') # 제대로 활용하기 !!!
     parser.add_argument('--num_training_steps', '-n', type=int, default=2000, help='how many steps when we training')
-    parser.add_argument('--save_boundary_accuracy', '-sba', type=float, default=93.0, help='save boundary accuracy in excel file when we training')
-    parser.add_argument('--save_boundary_f1_score', '-sbfs', type=float, default=93.0, help='save boundary f1-score in excel file when we training')
+    parser.add_argument('--save_boundary_accuracy', '-sba', type=float, default=90.0, help='save boundary accuracy in excel file when we training')
+    parser.add_argument('--save_boundary_f1_score', '-sbfs', type=float, default=0.9, help='save boundary f1-score in excel file when we training')
     parser.add_argument('--epochs', '-e', type=int, default=10, help='Number of epoch to train.')#ignore
 
 
     # 3. parse arguments
     args = parser.parse_args()
 
-    assert args.pretrain or args.train or args.transfer_learning or args.validation or args.test or args.graph, 'Choose pretrain or train or validation or test'
-    if args.graph:
-        assert args.source_train or args.target_train or args.target_transfer_learning, 'Choose source_train or target_train or target_transfer_learning'
+    assert args.source_pretrain or args.target_balanced_train or args.target_imbalanced_train or args.target_transfer_learning or args.validation or args.test or args.graph, 'Choose pretrain or train or validation or test'
+    if args.validation or args.test or args.graph:
+        assert args.source_pretrain or args.target_balanced_train or args.target_imbalanced_train or args.target_transfer_learning, 'Choose source_pretrain or target_train or target_transfer_learning'
     main(args)
